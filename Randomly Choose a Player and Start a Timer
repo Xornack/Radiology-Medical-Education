@@ -1,0 +1,214 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Jun  3 20:16:18 2020
+Randomly select people from a list, like students in a lecture. You can
+type in people's names and be able to add and remove people easily.
+
+Once you choose, it starts a timer. Default time is 60 seconds and adjustable.
+
+The selection can be random (so streaks are probable), or no streaks and 
+every player gets chosen once before the players you choose resets.
+
+You can save a default list of players, assuming that you have access to your
+Public Documents folder. If not, you have to add the players every time.
+@author: Xornack
+"""
+
+from random import randint
+import PySimpleGUI as sg
+import time
+import os
+from pathlib import Path # Allows easier path usage.
+# Took the windows path stuff from github. Works well.
+import sys
+import ctypes
+from ctypes import windll, wintypes
+from uuid import UUID
+import known_paths_for_windows as kpaths
+
+# folder is the path where your default list of players will be stored.
+# It's WindowsPath('C:/Users/Public/Documents'). You can't write to Default
+# and I couldn't figure out how to make it show up in my username folders.
+folder = Path(kpaths.get_path(kpaths.FOLDERID.PublicDocuments))
+
+# Feed a start time and optional length of countdown in seconds.
+# Returns the time remaining in seconds. If there's no time remaining,
+# returns "Time's up!"
+def count_down(start_time, length_of_countdown = 60):
+    leftover_time = int(length_of_countdown + start_time - time.time())
+    if leftover_time >= 0:
+        return str(leftover_time)
+    else:
+        return "Time's Up!"
+
+# Give a list of students, this randomly selects from the list. This 
+# would actually randomly select from any list.
+def random_select(lst):
+    return lst[randint(0, len(lst) - 1)]
+
+# Create space for a timer, input list of students, selection.
+def main():
+    
+    sg.theme('Reddit')
+    
+    # Dropdown menu.
+    menu_def = [
+        ['File', ['Default Timer', 'Repeat Mode']]
+        ]
+
+    # Main program layout.
+    layout = [
+        [sg.Menu(menu_def, tearoff=True, key = 'Default Timer')],
+        [sg.Text("Input Players Here: "), 
+         sg.InputText(size = (25, 1), key = "Player")],
+        [sg.Listbox(values = [], size = (25, 25), key = "Players",
+         enable_events = True)],
+        [sg.Text(text = time.strftime("%H:%M"), key = "Current Time",
+                 font=('Helvetica', 20)),
+         sg.Text(text = '', key = "Count Down", size = (10, 1), 
+                 justification = 'bottom right', font=('Helvetica', 20),
+                 text_color = 'red')],
+        [sg.Button("Choose"), sg.Button("Pause Timer"), sg.Button("Reset"),
+         sg.Button("Remove Player"), sg.Button("Exit")]
+        ]
+    
+    window = sg.Window("Randomly Choose a Volunteer", layout,
+                       return_keyboard_events = True,
+                       finalize=True)
+    
+    start_countdown = False
+    player_list = []
+    already_chosen_players = []
+    counter = 0
+    default_timer = 60
+    repeat_mode = "No Repeats"
+    time_left = str(default_timer)
+    window["Count Down"].update(time_left)
+    
+    failed = False # If you don't have access to Public Documents, you
+    # need an out. In this case, if you do, failed might be called before it's
+    # defined, causing program crash.
+    try:     
+        if os.path.exists(folder):
+            if not os.path.exists(folder / "player_list.txt"):
+                f = open(folder / "player_list.txt", 'w')
+                f.close()
+            f = open(folder / "player_list.txt", 'r')
+            player_list = f.read()
+            f.close()
+            player_list = player_list.split('\n')
+            player_list = [i for i in player_list if i != '']
+            if player_list == ['']:
+                player_list = []
+            window['Players'].update(player_list)
+    except:
+        failed = True
+        
+    # Need these keyboard key codes to use the Enter keay. THe other options
+    # listed for pysimplegui didn't work.
+    QT_ENTER_KEY1 = 'special 16777220'
+    QT_ENTER_KEY2 = 'special 16777221'
+    
+    while True:
+        event, values = window.read(timeout = 50)
+        
+        window['Current Time'].update(time.strftime("%H:%M"))
+        
+        # The None event is the close window button.
+        if event in (None, 'Exit'):
+            break
+        
+        if event == "Choose":
+            start_countdown = True
+            start_time = time.time()
+            time_left = str(default_timer)
+            where_timer_left_off = default_timer
+            
+            if len(player_list) > 0 and repeat_mode == "No Repeats":
+                sg.popup(random_select(player_list), font=('Helvetica', 50),
+                         text_color = "red")
+            elif len(player_list) > 0 and repeat_mode == "Repeats Allowed":
+                if len(player_list) == len(already_chosen_players):
+                    already_chosen_players = []
+                player = random_select([i for i in player_list 
+                                        if i not in already_chosen_players])
+                sg.popup(player, font=('Helvetica', 50),
+                         text_color = "red")
+                already_chosen_players.append(player)
+            else:
+                sg.popup("Need to add some Players!",
+                         font=('Helvetica', 50),
+                         text_color = "blue")
+            
+        if start_countdown == True:
+            if time_left != "Time's Up!":
+                time_left = count_down(start_time, where_timer_left_off)                
+            window["Count Down"].update(time_left)
+            
+        if event == "Pause Timer":
+            if time_left != "Time's Up!":
+                where_timer_left_off = int(time_left)
+            start_countdown = False
+            counter += 1
+            
+        if counter == 2: # This counter reaches 
+        #2 if you push the 'Pause Timer' button twice.
+            if time_left != "Time's Up!":
+                start_countdown = True
+                start_time = time.time()                
+            counter = 0
+            
+        if event == 'Default Timer':
+            temp = sg.popup_get_text("Default time in seconds",
+                                     default_text = '60')
+            try:
+                default_timer = int(temp)
+                time_left = str(default_timer)
+                window["Count Down"].update(time_left)
+            except:
+                None
+                
+        if event == 'Repeat Mode':
+            temp2 = sg.popup_yes_no("Do you want to cycle through the "
+                                    "whole list of players without repeats?")
+            if temp2 == 'Yes':
+                repeat_mode = "Repeats Allowed"
+            if temp2 == 'No':
+                repeat_mode = "No Repeats"
+                 
+        # If you type in a player and hit enter, it's added to the list.
+        # Surprisingly difficult to use <ENTER>, but this got it done.        
+        if event in ('\r', QT_ENTER_KEY1, QT_ENTER_KEY2): # Checks for the
+        # enter key.
+            player_list.append(values['Player'])
+            window['Player']('') # clears input
+            window['Players'].update(player_list) # show player list
+            if not failed == True:
+                if os.path.exists(folder / "player_list.txt"):
+                    f = open(folder / "player_list.txt", 'w')
+                    for i in player_list: f.write(i + '\n')
+                    f.close()
+            
+        if event == "Reset":
+            player_list = []
+            window['Players'].update(player_list)
+            start_countdown = False
+            already_chosen_players = []
+            if not failed == True:
+                if os.path.exists(folder / "player_list.txt"):
+                    f = open(folder / "player_list.txt", 'w')
+                    for i in player_list: f.write(i + '\n')
+                    f.close()
+                            
+        if event == 'Remove Player':
+            player_list.remove(values['Players'][0])
+            window['Players'].update(player_list)
+            if not failed == True:
+                if os.path.exists(folder / "player_list.txt"):
+                    f = open(folder / "player_list.txt", 'w')
+                    for i in player_list: f.write(i + '\n')
+                    f.close()
+                                                    
+    window.close()
+    
+main()
