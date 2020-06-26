@@ -2,8 +2,10 @@
 """
 Created on Sat Jun  6 12:46:53 2020
 Taken from:
+Taken from:
 https://gist.github.com/mkropat/7550097
-Get the known paths for 
+
+Thank you! This lets you get the path to common directories in Windows.
 @author: mkropat
 """
 import ctypes, sys
