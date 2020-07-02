@@ -51,12 +51,15 @@ def pair_up(lst):
     powers_of_2 = [2**i for i in range(1, 10)] #No chance there will be 512
     # players, so okay to stop here.
     
+    # lowest power of 2 allowed for a bracket.
     lowest_power_of_2 = 2
     if len(lst) not in powers_of_2:
         for i in powers_of_2:      
             if len(lst) < i:
                 lowest_power_of_2 = i
                 break
+    elif len(lst) in powers_of_2:
+        lowest_power_of_2 = len(lst)
     number_of_byes = lowest_power_of_2 - len(lst)
     
     # Match to byes.
