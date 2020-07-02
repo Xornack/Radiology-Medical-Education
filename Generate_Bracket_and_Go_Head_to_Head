@@ -1,0 +1,494 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Jun 24 19:43:28 2020
+Program to accept a list of players and randomly assign them into an NCAA-style
+single elimination bracket. Once you start, it allows a head to head competition,
+hopefully a quiz game of some kind. For radiology education, I envisioned
+taking a radiology case. First person to get the answer advances.
+
+Single elmination.
+@author: Xor
+"""
+
+from random import shuffle
+import PySimpleGUI as sg
+import time
+import os
+from pathlib import Path # Allows easier path usage.
+# Took the windows path stuff from github. Works well.
+import sys
+import ctypes
+from ctypes import windll, wintypes
+from uuid import UUID
+import known_paths_for_windows as kpaths
+
+# folder is the path where your default list of players will be stored.
+# It's WindowsPath('C:/Users/Public/Documents'). You can't write to Default
+# and I couldn't figure out how to make it show up in my username folders.
+folder = Path(kpaths.get_path(kpaths.FOLDERID.PublicDocuments))
+
+# Would just use shuffle, but want a function to actually return the list.
+def randomize_list(lst):
+    shuffle(lst)
+    return lst
+
+# Find the screen width and height.
+# https://stackoverflow.com/questions/3129322/how-do-i-get-monitor-resolution-in-python
+def fraction_of_screensize(fraction):
+    user32 = ctypes.windll.user32
+    screensize = user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)      
+    # Canvas size will be a fraction of screen size.
+    return (int(fraction*screensize[0]), int(fraction*screensize[1]))
+
+# Create the pairs you need for a bracket to work. If there are not a power of 
+# 2 number of players, the excess all go to 'BYE', which will be
+# automatically pushed down the bracket as players progress.
+
+def pair_up(lst):
+    byes = []    
+    # In order for a bracket to complete cleanly, you need to have powers of
+    # 2 number of players.
+    powers_of_2 = [2**i for i in range(1, 10)] #No chance there will be 512
+    # players, so okay to stop here.
+    
+    lowest_power_of_2 = 2
+    if len(lst) not in powers_of_2:
+        for i in powers_of_2:      
+            if len(lst) < i:
+                lowest_power_of_2 = i
+                break
+    number_of_byes = lowest_power_of_2 - len(lst)
+    
+    # Match to byes.
+    for i in range(number_of_byes):
+        byes.append([lst[i], 'BYE'])
+            
+    new_list = lst[number_of_byes:]
+    # To find the number of pairs you need,
+    # split the remaining list in half
+    first_half = [new_list[i] for i in range(int(len(new_list)/2))]
+    second_half = [new_list[j] for j in range(int(len(new_list)/2), 
+                                              len(new_list))]   
+    # Join the pairs together.     
+    pairs = [[i,j] for i,j in zip(first_half, second_half)]
+            
+    return pairs, byes
+
+def start_screen():
+    
+    sg.theme('Reddit')
+    
+    # Dropdown menu.
+    menu_def = [
+        ['File', ['About', 'Exit']]
+        ]
+
+    # Main program layout.
+    layout = [
+        [sg.Menu(menu_def, tearoff=True)],
+        [sg.Text("Input Players Here: "), 
+         sg.InputText(size = (25, 1), key = "Player")],
+        [sg.Listbox(values = [], size = (25, 25), key = "Players",
+         enable_events = True)],
+        [sg.Text(text = time.strftime("%H:%M"), key = "Current Time",
+                 font=('Helvetica', 20))],
+        [sg.Button("Play"),
+         sg.Button("Remove Player")]
+        ]
+    
+    window = sg.Window("Bracket Bloodbath", layout,
+                       return_keyboard_events = True,
+                       finalize=True,
+                       resizable = True)
+    
+    player_list = []
+    
+    failed = False # If you don't have access to Public Documents, you
+    # need an out. In this case, if you do, failed might be called before it's
+    # defined, causing program crash.
+    try:     
+        if os.path.exists(folder):
+            if not os.path.exists(folder / "brackets_player_list.txt"):
+                f = open(folder / "brackets_player_list.txt", 'w')
+                f.close()
+            f = open(folder / "brackets_player_list.txt", 'r')
+            player_list = f.read()
+            f.close()
+            player_list = player_list.split('\n')
+            player_list = [i for i in player_list if i != '']
+            if player_list == ['']:
+                player_list = []
+            window['Players'].update(player_list)
+    except:
+        failed = True
+        
+    # Need these keyboard key codes to use the Enter keay.
+    QT_ENTER_KEY1 = 'special 16777220'
+    QT_ENTER_KEY2 = 'special 16777221'
+    
+    move_to_startscreen = True
+    move_to_bracket = False
+    move_to_matchup = False    
+
+    while True:
+        
+        event, values = window.read(timeout = 50)
+        
+        window['Current Time'].update(time.strftime("%H:%M"))
+        
+        # The None event is the close window button.
+        if event in (None, 'Exit'):
+            move_to_bracket = False
+            move_to_matchup = False
+            move_to_startscreen = False
+            break
+        
+        if event == "Play":
+            move_to_bracket = True
+            move_to_matchup = False
+            move_to_startscreen = False
+            break
+                 
+        # If you type in a player and hit enter, it's added to the list.
+        # Surprisingly difficult to use <ENTER>, but this got it done.        
+        if event in ('\r', QT_ENTER_KEY1, QT_ENTER_KEY2): # Checks for the
+        # enter key.
+            player_list.append(values['Player'])
+            window['Player']('') # clears input
+            window['Players'].update(player_list) # show player list
+            if not failed == True:
+                if os.path.exists(folder / "brackets_player_list.txt"):
+                    f = open(folder / "brackets_player_list.txt", 'w')
+                    for i in player_list: f.write(i + '\n')
+                    f.close()
+                            
+        if event == 'Remove Player':
+            player_list.remove(values['Players'][0])
+            window['Players'].update(player_list)
+            if not failed == True:
+                if os.path.exists(folder / "brackets_player_list.txt"):
+                    f = open(folder / "brackets_player_list.txt", 'w')
+                    for i in player_list: f.write(i + '\n')
+                    f.close()
+                    
+        if event == 'About':
+            sg.popup("This program is intended for getting players" +
+                     " organized in a randomly seeded bracket." +
+                     '\n' +
+                     " I imagined it for lecture, where two residents" +
+                     " go head-to-head taking a case, fastest wins." +
+                     '\n' +
+                     'And there can be only one!',
+                     title = 'About')
+                    
+    window.close()
+    return move_to_bracket, move_to_matchup, move_to_startscreen, player_list
+
+
+# Making a bracket from the list of names!
+def bracket(player_list, buttons_to_update, first_time, 
+            pairs, byes, button_labels):
+        
+    font_size = fraction_of_screensize(0.015)[1]
+   
+    # Eventually want to size the buttons all the same, so need max size
+    # of the longest name. This will be fed into the button size param.
+    # Pairs and byes are the eventual pairing and byes made from the 
+    # player list. Both are list of lists contianing two names or [name, bye]
+    def max_horizontal_length(pairs, byes):
+        max_length = 0
+        for i in pairs + byes:
+            if max(len(i[0]), len(i[1])) > max_length:
+                max_length = max(len(i[0]), len(i[1]))
+        return max_length
+       
+    # Function that makes buttons from a list of match-ups.
+    def make_matchup_buttons(pairs, byes, col, button_size = (10, 3)):
+                
+        button_size = (max_horizontal_length(pairs, byes), 3)
+                            
+        button_list = []
+        
+        key = 0
+        for i in pairs:
+            button_list.append([sg.Button(i[0] + '\n vs. \n' + i[1],
+                                         size = button_size,
+                                         font=('Helvetica', font_size),
+                                         key = '{}{}'.format(col, key +1))])
+            key +=1
+        for i in byes:
+            button_list.append([sg.Button(i[0] + '\n' + i[1],
+                                         size = button_size,
+                                         font=('Helvetica', font_size),
+                                         key = '{}{}'.format(col, key +1))])
+            key+=1
+        return button_list
+    
+    # Need to know how many columns there should be for variable bracket sizes.
+    # Returns a list of number of buttons for each column in descending order.
+    def calc_n_columns(pairs, byes):
+        first_number = len(pairs + byes)
+        n = [first_number]
+        while n[-1] != 1:
+            n.append(int(n[-1]/2))          
+        return n
+    
+    # Randomize (shuffle) the player list.
+    if first_time == True: # Only want to do this the first time.
+        player_list = randomize_list(player_list)
+    
+    # Pair players up. If there is a number that's not a power of 2,
+    # players are matched appropriately with 'BYE'.
+        pairs, byes = pair_up(player_list)
+        first_time = False
+    
+    # Set up theme preference for the bracket window.
+    sg.theme('Reddit')
+    
+    # Menu options.
+    menu = [
+        ['File', ['Return to Start Screen']]
+        ]
+    
+    col = 1 # First column label
+    first_column = [i for i in make_matchup_buttons(pairs, byes, col = col)]
+    columns = [sg.Column(first_column)]
+    button_width = max_horizontal_length(pairs, byes)
+    blank_string = ''.join([' ' for i in range(button_width)])
+
+    # For each column after the first, make dummy buttons to be filled.
+    # When input arrives, will change the relevant button text.
+    for i in calc_n_columns(pairs, byes)[1:]:
+        col += 1
+        blanks = [[blank_string, blank_string] for j in range(i)]
+
+        blank_buttons = [i for i in 
+                         make_matchup_buttons(blanks, [], col,
+                                              (button_width, 3))]
+        
+        if i != 1:
+            padding_rows = int((len(pairs + byes) - i)/2)
+            padding = [[sg.Text('', font=('Helvetica', font_size))] 
+                       for i in range(3*padding_rows)]
+            
+            columns.append(sg.Column(padding + blank_buttons))
+        # The position of the last button is a little different.
+        elif i == 1:
+            padding_rows = int((3*len(pairs + byes) - i)/2) - 1
+            padding = [[sg.Text('', font=('Helvetica', font_size))] 
+                       for i in range(padding_rows)]
+            
+            last_button = [sg.Button('\n vs. \n',
+                                     font = ('Helvetica', font_size),
+                                     size = (button_width, 3),
+                                     key = '{}{}'.format(
+                                         len(calc_n_columns(pairs, byes)), 1)
+                                         )]
+
+            columns.append(sg.Column(padding + [last_button]))
+        
+               
+    bracket_layout = [
+        [sg.Menu(menu_definition = menu)],
+        columns
+        ]
+       
+    window = sg.Window("Bracket Bloodbath", bracket_layout,
+                       return_keyboard_events = True,
+                       finalize = True,
+                       resizable = True)
+    
+    # Button Labels. '11' is row 1 of column 1, '32' is row 2 of column 3...
+    def button_labels(pairs, byes):
+        # The height of each button in number of buttons
+        column_heights = calc_n_columns(pairs, byes)
+        button_labels = []
+        column = 1
+        for i in column_heights:
+            button_labels.append(['{}{}'.format(column, j) 
+                                  for j in range(1, i +1)])
+            column +=1            
+        # Flatten output.
+        return [label for sublist in button_labels for label in sublist]
+    
+    # Button labels == button keys.
+    button_labels = button_labels(pairs, byes)
+                        
+    # Update all the dummy buttons with real values if available from 
+    # matchups.
+    if len(buttons_to_update) > 0:
+        for i in buttons_to_update.keys():
+            window[i].update(buttons_to_update[i])
+    else:
+        buttons_to_update = {}
+    
+    # Variables.
+    move_to_start_screen = False
+    move_to_bracket = True
+    move_to_matchup = False
+    names = ['No names entered yet', 'No names entered yet']
+    key_of_button_pressed = 'No Button Pressed'
+   
+    while True:
+        event, values = window.read(timeout = 50)
+        
+        if event == None:
+            move_to_start_screen = True
+            move_to_matchup = False
+            move_to_bracket = False
+            break
+        
+        if event == "Return to Start Screen":
+            move_to_start_screen = True
+            move_to_bracket = False
+            break
+        
+        if event in button_labels:
+            key_of_button_pressed = event
+            names = [window[event].GetText().split()[0],
+                     window[event].GetText().split()[-1]]
+            move_to_matchup = True
+            move_to_bracket = False
+            break
+                
+    window.close()
+    
+    return move_to_start_screen, move_to_bracket, move_to_matchup, \
+        names, key_of_button_pressed, buttons_to_update, first_time, \
+            pairs, byes, button_labels
+
+def matchup(names, key_of_button_pressed, buttons_to_update, button_labels):
+    
+    # Function to calculate the key you need to update given a key you pushed
+    # in the bracket.
+    def key_of_button_to_update(key_of_button_pressed):
+        col, row = int(key_of_button_pressed[0]), int(key_of_button_pressed[1])
+        # Add one to the column value.
+        col += 1
+        # If the row is even, divide by two.
+        if row % 2 == 0:
+            row = int(row / 2)
+        # if the row is an odd number, add 1 and divide by 2.
+        else:
+            row = int((row + 1) / 2)
+        
+        return '{}{}'.format(col, row)
+        
+    name1 = names[0]
+    name2 = names[1]
+    
+    font_size = fraction_of_screensize(0.05)[1]
+    
+    
+    
+    matchup_layout = [        
+        [sg.Button(name1, key = name1, 
+                   font = ('Helvetica', font_size))]
+        ]
+        
+    if name2 != "BYE":
+        matchup_layout[0].append(
+         sg.Button(name2, key = name2, 
+                   font = ('Helvetica', font_size))
+        )
+
+    window = sg.Window("Matchup Madness", 
+                       matchup_layout, 
+                       return_keyboard_events = True,
+                       finalize = True)
+        
+    move_to_bracket = False
+    move_to_matchup = True
+    winner_name = "No winner yet"
+    
+    while True:
+        event, values = window.read(timeout = 50)
+    
+        if event == None:
+            move_to_bracket = True
+            break
+        
+        if event == name1 and key_of_button_pressed in button_labels[:-1]:
+            move_to_matchup = False
+            move_to_bracket = True
+            key_of_button_to_update = key_of_button_to_update(key_of_button_pressed)
+            winner_name = name1
+            break
+        
+        if event == name2 and key_of_button_pressed in button_labels[:-1]:
+            move_to_matchup = False
+            move_to_bracket = True
+            key_of_button_to_update = key_of_button_to_update(key_of_button_pressed)
+            winner_name = name2
+            break
+        
+        # If it's the last button.
+        if event in (name1, name2) and key_of_button_pressed == button_labels[-1]:
+            move_to_matchup = False
+            move_to_bracket = True
+            big_winner = event
+            sg.popup(big_winner + " WINS!!!", 
+                     font = ('Helvetica', font_size + 10),
+                     text_color = 'red')
+         
+    # Update the button if it's the first time the button key has been
+    # modified, otherwise, you change the buttons_to_update dictionary.   
+    if event in (name1, name2) and key_of_button_to_update not in buttons_to_update.keys():
+        # If the key of the button pressed is odd, you update the top of the
+        # button text.
+        if int(key_of_button_pressed[-1]) % 2 == 1:
+            updated_button_text = winner_name + '\n vs. \n'
+        # If it's an even number you add to the bottom.
+        elif int(key_of_button_pressed[-1]) % 2 == 0:
+            updated_button_text = '\n vs. \n' + winner_name
+        # Then add the key: value to the list.
+        buttons_to_update.update({key_of_button_to_update: updated_button_text})
+    # Otherwise, you are just updating the buttons_to_update dict.
+    elif event in (name1, name2) and key_of_button_to_update in buttons_to_update.keys():
+        if int(key_of_button_pressed[-1]) % 2 == 1:
+            buttons_to_update[key_of_button_to_update] = winner_name + buttons_to_update[key_of_button_to_update]
+        # If it's an even number you add to the bottom.
+        elif int(key_of_button_pressed[-1]) % 2 == 0:
+            buttons_to_update[key_of_button_to_update] = buttons_to_update[key_of_button_to_update] + winner_name
+    elif event == None: # no input do nothing.
+        pass
+
+    window.close()
+    return move_to_bracket, move_to_matchup, buttons_to_update
+        
+# The main function just switches back and forth between the start screen and
+# the bracket screen and allows for an exit from either.
+def main():
+    move_to_start_screen = True
+    move_to_bracket = False
+    move_to_matchup = False
+    buttons_to_update = {}
+    first_time = True
+    pairs = []
+    byes = []
+    button_labels = []
+    
+    while True:
+        if move_to_start_screen == True:
+            move_to_bracket, move_to_matchup, move_to_start_screen, player_list = start_screen()
+            
+        elif move_to_bracket == True:
+            move_to_start_screen, move_to_bracket, move_to_matchup, names, \
+                key_of_button_pressed, buttons_to_update, \
+                first_time, pairs, byes, button_labels \
+                    = bracket(player_list, buttons_to_update, 
+                              first_time, pairs, byes, button_labels)
+            
+        elif move_to_matchup == True:
+            move_to_bracket, move_to_matchup, buttons_to_update \
+                = matchup(names, key_of_button_pressed, 
+                          buttons_to_update, button_labels)
+            
+        else:
+            break
+        
+        #print(move_to_start_screen, move_to_bracket, move_to_matchup)
+    
+    print("List of players saved in", folder, "if you have access to it.")
+    
+main()
