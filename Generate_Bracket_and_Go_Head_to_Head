@@ -168,7 +168,7 @@ def start_screen():
                     for i in player_list: f.write(i + '\n')
                     f.close()
                             
-        if event == 'Remove Player':
+        if event == 'Remove Player' and len(player_list) > 0:
             player_list.remove(values['Players'][0])
             window['Players'].update(player_list)
             if not failed == True:
