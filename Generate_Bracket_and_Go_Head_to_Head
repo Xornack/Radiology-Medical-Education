@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 """
+Generate_Bracket_and_Go_Head_to_Head.py
+
 Created on Wed Jun 24 19:43:28 2020
 Program to accept a list of players and randomly assign them into an NCAA-style
 single elimination bracket. Once you start, it allows a head to head competition,
@@ -83,7 +85,7 @@ def start_screen():
     
     # Dropdown menu.
     menu_def = [
-        ['File', ['About', 'Exit']]
+        ['File', ['About', 'Reset Bracket', 'Exit']]
         ]
 
     # Main program layout.
@@ -131,7 +133,8 @@ def start_screen():
     
     move_to_startscreen = True
     move_to_bracket = False
-    move_to_matchup = False    
+    move_to_matchup = False
+    reset_bracket = False
 
     while True:
         
@@ -183,14 +186,19 @@ def start_screen():
                      '\n' +
                      'And there can be only one!',
                      title = 'About')
+            
+        if event == "Reset Bracket":
+            reset_bracket = True
                     
     window.close()
-    return move_to_bracket, move_to_matchup, move_to_startscreen, player_list
+    return move_to_bracket, move_to_matchup, move_to_startscreen, player_list, \
+        reset_bracket
 
 
 # Making a bracket from the list of names!
 def bracket(player_list, buttons_to_update, first_time, 
-            pairs, byes, button_labels):
+            pairs, byes, button_labels, reset_bracket,
+            buttons_already_pressed):
         
     font_size = fraction_of_screensize(0.015)[1]
    
@@ -237,13 +245,17 @@ def bracket(player_list, buttons_to_update, first_time,
         return n
     
     # Randomize (shuffle) the player list.
-    if first_time == True: # Only want to do this the first time.
+    if first_time == True or reset_bracket == True:
         player_list = randomize_list(player_list)
     
     # Pair players up. If there is a number that's not a power of 2,
     # players are matched appropriately with 'BYE'.
         pairs, byes = pair_up(player_list)
         first_time = False
+        
+        # If reset_bracket is true, buttons to update need to be nulled out.
+        buttons_to_update = []
+        buttons_already_pressed = []
     
     # Set up theme preference for the bracket window.
     sg.theme('Reddit')
@@ -346,21 +358,29 @@ def bracket(player_list, buttons_to_update, first_time,
             move_to_bracket = False
             break
         
-        if event in button_labels:
+        if event in button_labels and event not in buttons_already_pressed:
             key_of_button_pressed = event
+            buttons_already_pressed.append(key_of_button_pressed)
             names = [window[event].GetText().split()[0],
                      window[event].GetText().split()[-1]]
             move_to_matchup = True
             move_to_bracket = False
             break
+        
+        if event in buttons_already_pressed:
+            sg.popup("We already experienced that matchup big shooter!"
+                     " And what a doozer eh?!",
+                     font = ('Helvetica', font_size),
+                     text_color = 'green')
                 
     window.close()
     
     return move_to_start_screen, move_to_bracket, move_to_matchup, \
         names, key_of_button_pressed, buttons_to_update, first_time, \
-            pairs, byes, button_labels
+            pairs, byes, button_labels, reset_bracket, buttons_already_pressed
 
-def matchup(names, key_of_button_pressed, buttons_to_update, button_labels):
+def matchup(names, key_of_button_pressed, buttons_to_update, button_labels,
+            buttons_already_pressed):
     
     # Function to calculate the key you need to update given a key you pushed
     # in the bracket.
@@ -457,7 +477,8 @@ def matchup(names, key_of_button_pressed, buttons_to_update, button_labels):
         pass
 
     window.close()
-    return move_to_bracket, move_to_matchup, buttons_to_update
+    return move_to_bracket, move_to_matchup, buttons_to_update,\
+        buttons_already_pressed
         
 # The main function just switches back and forth between the start screen and
 # the bracket screen and allows for an exit from either.
@@ -470,22 +491,28 @@ def main():
     pairs = []
     byes = []
     button_labels = []
+    buttons_already_pressed = []
     
     while True:
         if move_to_start_screen == True:
-            move_to_bracket, move_to_matchup, move_to_start_screen, player_list = start_screen()
+            move_to_bracket, move_to_matchup, move_to_start_screen, \
+                player_list, reset_bracket = start_screen()
             
         elif move_to_bracket == True:
             move_to_start_screen, move_to_bracket, move_to_matchup, names, \
                 key_of_button_pressed, buttons_to_update, \
-                first_time, pairs, byes, button_labels \
+                first_time, pairs, byes, button_labels, reset_bracket,\
+                    buttons_already_pressed \
                     = bracket(player_list, buttons_to_update, 
-                              first_time, pairs, byes, button_labels)
+                              first_time, pairs, byes, button_labels,
+                              reset_bracket, buttons_already_pressed)
             
         elif move_to_matchup == True:
-            move_to_bracket, move_to_matchup, buttons_to_update \
-                = matchup(names, key_of_button_pressed, 
-                          buttons_to_update, button_labels)
+            move_to_bracket, move_to_matchup, buttons_to_update,\
+                buttons_already_pressed \
+                    = matchup(names, key_of_button_pressed,
+                              buttons_to_update, button_labels,
+                              buttons_already_pressed)
             
         else:
             break
